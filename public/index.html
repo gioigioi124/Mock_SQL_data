@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SQL Table Viewer</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg: #0d0f14;
+  --bg2: #13161e;
+  --bg3: #1a1e29;
+  --bg4: #212635;
+  --border: #2a2f3e;
+  --border2: #353b50;
+  --accent: #4f8ef7;
+  --accent2: #7b61ff;
+  --green: #3dd68c;
+  --yellow: #f5c542;
+  --red: #f56342;
+  --text: #e2e6f0;
+  --text2: #8b93a8;
+  --text3: #555d72;
+  --pk: #f5c542;
+  --fk: #7b61ff;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Syne', sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:var(--mono); font-size:13px; display:flex; height:100vh; overflow:hidden; }
+
+/* ── SIDEBAR ── */
+#sidebar {
+  width:260px; min-width:260px; background:var(--bg2);
+  border-right:1px solid var(--border);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+#sidebar-header {
+  padding:18px 16px 12px;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+#sidebar-header h1 {
+  font-family:var(--sans); font-size:15px; font-weight:800;
+  letter-spacing:.05em; color:var(--accent);
+  display:flex; align-items:center; gap:8px;
+}
+#db-info { font-size:11px; color:var(--text3); margin-top:4px; }
+#conn-status { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--red); margin-right:5px; transition:.3s; }
+#conn-status.online { background:var(--green); box-shadow:0 0 6px var(--green); }
+
+#search-box {
+  margin:10px 12px 0;
+  display:flex; align-items:center; gap:6px;
+  background:var(--bg3); border:1px solid var(--border);
+  border-radius:6px; padding:6px 10px;
+}
+#search-box input {
+  background:none; border:none; outline:none;
+  color:var(--text); font-family:var(--mono); font-size:12px;
+  width:100%;
+}
+#search-box span { color:var(--text3); font-size:14px; flex-shrink:0; }
+
+#table-list { flex:1; overflow-y:auto; padding:8px 0; }
+#table-list::-webkit-scrollbar { width:4px; }
+#table-list::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
+
+.schema-group {}
+.schema-label {
+  padding:6px 16px 4px;
+  font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--text3); font-weight:600;
+}
+.table-item {
+  padding:7px 16px; cursor:pointer;
+  display:flex; align-items:center; gap:8px;
+  transition:.15s; border-left:2px solid transparent;
+}
+.table-item:hover { background:var(--bg3); color:var(--text); }
+.table-item.active {
+  background:var(--bg4); border-left-color:var(--accent);
+  color:var(--accent);
+}
+.table-item .tname { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:12px; }
+.table-item .trows {
+  font-size:10px; color:var(--text3);
+  background:var(--bg3); padding:1px 5px; border-radius:3px;
+}
+.table-item .ttype { font-size:10px; color:var(--text3); }
+.ti-icon { color:var(--text3); font-size:11px; flex-shrink:0; }
+
+/* ── MAIN ── */
+#main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+
+/* ── TOPBAR ── */
+#topbar {
+  height:48px; background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; padding:0 16px; gap:8px;
+  flex-shrink:0;
+}
+.tab-btn {
+  padding:5px 14px; border-radius:5px; cursor:pointer;
+  font-family:var(--mono); font-size:12px; color:var(--text2);
+  background:none; border:1px solid transparent;
+  transition:.15s;
+}
+.tab-btn:hover { color:var(--text); border-color:var(--border); }
+.tab-btn.active { background:var(--bg4); color:var(--accent); border-color:var(--border2); }
+#topbar-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
+#db-select {
+  background:var(--bg3); border:1px solid var(--border); border-radius:5px;
+  color:var(--text); font-family:var(--mono); font-size:12px;
+  padding:4px 8px; cursor:pointer; outline:none;
+}
+#btn-settings {
+  width:32px; height:32px; border-radius:5px;
+  background:var(--bg3); border:1px solid var(--border);
+  color:var(--text2); cursor:pointer; font-size:14px;
+  display:flex; align-items:center; justify-content:center;
+  transition:.15s;
+}
+#btn-settings:hover { color:var(--accent); border-color:var(--accent); }
+
+/* ── CONTENT ── */
+#content { flex:1; overflow:hidden; display:flex; flex-direction:column; }
+
+/* ── PANELS ── */
+.panel { display:none; flex:1; overflow:hidden; flex-direction:column; }
+.panel.active { display:flex; }
+
+/* ── TABLE VIEW ── */
+#panel-data {}
+#table-header {
+  padding:12px 16px 8px;
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:10px;
+  flex-shrink:0; flex-wrap:wrap;
+}
+#table-title { font-family:var(--sans); font-size:16px; font-weight:700; }
+#table-subtitle { font-size:11px; color:var(--text3); }
+#table-controls { margin-left:auto; display:flex; gap:6px; align-items:center; }
+.ctrl-btn {
+  padding:5px 12px; border-radius:5px; cursor:pointer;
+  font-family:var(--mono); font-size:11px;
+  border:1px solid var(--border); background:var(--bg3);
+  color:var(--text2); transition:.15s;
+}
+.ctrl-btn:hover { color:var(--text); border-color:var(--border2); }
+#limit-select {
+  background:var(--bg3); border:1px solid var(--border); border-radius:5px;
+  color:var(--text); font-family:var(--mono); font-size:11px;
+  padding:4px 6px; outline:none;
+}
+
+/* Columns panel */
+#col-panel {
+  width:260px; min-width:260px;
+  border-right:1px solid var(--border);
+  overflow-y:auto; background:var(--bg2);
+}
+#col-panel::-webkit-scrollbar { width:4px; }
+#col-panel::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
+#col-panel h3 {
+  padding:10px 12px; font-size:11px; font-weight:600;
+  letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text3); border-bottom:1px solid var(--border);
+  font-family:var(--sans); position:sticky; top:0; background:var(--bg2);
+}
+.col-row {
+  padding:6px 12px; display:flex; align-items:center; gap:6px;
+  border-bottom:1px solid var(--border); transition:.1s;
+}
+.col-row:hover { background:var(--bg3); }
+.col-name { flex:1; font-size:12px; }
+.col-type { font-size:10px; color:var(--text3); }
+.col-badge {
+  font-size:9px; padding:1px 5px; border-radius:3px; font-weight:600;
+  letter-spacing:.05em; flex-shrink:0;
+}
+.badge-pk { background:#f5c54220; color:var(--pk); border:1px solid #f5c54240; }
+.badge-fk { background:#7b61ff20; color:var(--fk); border:1px solid #7b61ff40; }
+.badge-null { background:#ffffff08; color:var(--text3); border:1px solid var(--border); }
+
+#data-area { flex:1; overflow:auto; }
+#data-area::-webkit-scrollbar { width:6px; height:6px; }
+#data-area::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
+#data-area::-webkit-scrollbar-corner { background:var(--bg2); }
+
+.data-table { border-collapse:collapse; width:max-content; min-width:100%; }
+.data-table th {
+  background:var(--bg2); position:sticky; top:0; z-index:2;
+  padding:8px 14px; text-align:left; font-size:11px;
+  color:var(--text2); font-weight:500; white-space:nowrap;
+  border-bottom:2px solid var(--border2);
+  border-right:1px solid var(--border);
+}
+.data-table th.pk { color:var(--pk); }
+.data-table td {
+  padding:6px 14px; font-size:12px; white-space:nowrap;
+  border-bottom:1px solid var(--border);
+  border-right:1px solid var(--border); max-width:300px;
+  overflow:hidden; text-overflow:ellipsis;
+}
+.data-table tr:hover td { background:var(--bg3); }
+.null-val { color:var(--text3); font-style:italic; }
+.num-val { color:#7dd3fc; }
+.str-val { color:#86efac; }
+.date-val { color:#fda4af; }
+
+#pagination {
+  padding:8px 16px; border-top:1px solid var(--border);
+  display:flex; align-items:center; gap:8px;
+  flex-shrink:0; background:var(--bg2);
+}
+.pg-btn {
+  padding:4px 10px; border-radius:4px;
+  background:var(--bg3); border:1px solid var(--border);
+  color:var(--text2); cursor:pointer; font-family:var(--mono); font-size:11px;
+}
+.pg-btn:hover:not(:disabled) { color:var(--accent); border-color:var(--accent); }
+.pg-btn:disabled { opacity:.3; cursor:default; }
+#pg-info { font-size:11px; color:var(--text3); }
+#row-count { margin-left:auto; font-size:11px; color:var(--text3); }
+
+/* ── QUERY PANEL ── */
+#panel-query { padding:0; }
+#query-editor-wrap {
+  border-bottom:1px solid var(--border); flex-shrink:0;
+  display:flex; flex-direction:column; height:180px;
+}
+#query-editor-header {
+  padding:8px 12px; display:flex; align-items:center; gap:8px;
+  background:var(--bg2); border-bottom:1px solid var(--border);
+}
+#query-editor-header span { font-size:11px; color:var(--text3); flex:1; }
+#btn-run {
+  padding:5px 16px; border-radius:5px; cursor:pointer;
+  background:var(--accent); border:none; color:#fff;
+  font-family:var(--mono); font-size:12px; font-weight:500;
+  transition:.15s; display:flex; align-items:center; gap:6px;
+}
+#btn-run:hover { background:#3a7ae0; }
+#btn-run:active { transform:scale(.97); }
+#sql-input {
+  flex:1; background:var(--bg); border:none; outline:none;
+  color:var(--text); font-family:var(--mono); font-size:13px;
+  padding:12px 16px; resize:none; line-height:1.6;
+}
+#query-result { flex:1; overflow:auto; }
+#query-result::-webkit-scrollbar { width:6px; height:6px; }
+#query-result::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
+#query-status {
+  padding:8px 16px; border-bottom:1px solid var(--border);
+  font-size:11px; display:flex; align-items:center; gap:8px;
+  background:var(--bg2); flex-shrink:0;
+}
+.status-ok { color:var(--green); }
+.status-err { color:var(--red); }
+
+/* ── SCHEMA PANEL ── */
+#panel-schema { overflow-y:auto; padding:16px; gap:0; }
+#panel-schema::-webkit-scrollbar { width:6px; }
+#panel-schema::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
+.schema-card {
+  background:var(--bg2); border:1px solid var(--border);
+  border-radius:8px; margin-bottom:12px; overflow:hidden;
+}
+.schema-card-header {
+  padding:10px 14px; background:var(--bg3);
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:8px;
+  cursor:pointer;
+}
+.schema-card-header:hover { background:var(--bg4); }
+.schema-card-title { font-family:var(--sans); font-size:13px; font-weight:700; flex:1; }
+.schema-card-meta { font-size:11px; color:var(--text3); }
+.schema-card-body { display:none; }
+.schema-card.open .schema-card-body { display:block; }
+.schema-col-row {
+  padding:7px 14px; display:flex; align-items:center; gap:8px;
+  border-bottom:1px solid var(--border); font-size:12px;
+}
+.schema-col-row:last-child { border-bottom:none; }
+.schema-col-row .sname { flex:1; }
+.schema-col-row .stype { font-size:11px; color:var(--text3); width:120px; flex-shrink:0; }
+.schema-fk-info { font-size:10px; color:var(--fk); }
+
+/* ── CONNECT MODAL ── */
+#modal-overlay {
+  position:fixed; inset:0; background:#00000090;
+  backdrop-filter:blur(4px);
+  display:flex; align-items:center; justify-content:center;
+  z-index:100; display:none;
+}
+#modal-overlay.show { display:flex; }
+#modal {
+  background:var(--bg2); border:1px solid var(--border2);
+  border-radius:10px; padding:24px; width:400px;
+  box-shadow:0 20px 60px #00000060;
+}
+#modal h2 { font-family:var(--sans); font-size:16px; font-weight:800; margin-bottom:16px; }
+.form-row { margin-bottom:12px; }
+.form-row label { display:block; font-size:11px; color:var(--text3); margin-bottom:4px; }
+.form-row input {
+  width:100%; background:var(--bg3); border:1px solid var(--border);
+  border-radius:6px; padding:8px 10px;
+  color:var(--text); font-family:var(--mono); font-size:12px; outline:none;
+  transition:.15s;
+}
+.form-row input:focus { border-color:var(--accent); }
+.form-row-2 { display:grid; grid-template-columns:1fr 100px; gap:10px; }
+.modal-btns { display:flex; gap:8px; margin-top:16px; justify-content:flex-end; }
+.btn-primary {
+  padding:8px 18px; border-radius:6px; cursor:pointer;
+  background:var(--accent); border:none; color:#fff;
+  font-family:var(--mono); font-size:12px; font-weight:500;
+}
+.btn-primary:hover { background:#3a7ae0; }
+.btn-cancel {
+  padding:8px 14px; border-radius:6px; cursor:pointer;
+  background:var(--bg3); border:1px solid var(--border);
+  color:var(--text2); font-family:var(--mono); font-size:12px;
+}
+.btn-cancel:hover { color:var(--text); }
+#modal-msg { margin-top:10px; font-size:11px; padding:6px 10px; border-radius:4px; display:none; }
+#modal-msg.ok { background:#3dd68c20; color:var(--green); display:block; }
+#modal-msg.err { background:#f5634220; color:var(--red); display:block; }
+
+/* ── EMPTY / LOADING ── */
+#empty-state {
+  flex:1; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:10px;
+  color:var(--text3);
+}
+#empty-state .big { font-size:48px; }
+#empty-state p { font-size:13px; }
+.loading { 
+  display:flex; align-items:center; justify-content:center;
+  padding:40px; color:var(--text3); gap:10px;
+}
+.spinner {
+  width:16px; height:16px; border:2px solid var(--border2);
+  border-top-color:var(--accent); border-radius:50%;
+  animation:spin .6s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* ── STATS BAR ── */
+#stats-bar {
+  display:flex; gap:16px; padding:8px 16px;
+  border-bottom:1px solid var(--border);
+  background:var(--bg2); flex-shrink:0;
+}
+.stat-item { display:flex; align-items:center; gap:5px; }
+.stat-num { font-family:var(--sans); font-size:15px; font-weight:700; color:var(--accent); }
+.stat-label { font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:.06em; }
+
+/* ── RELATIONSHIPS PANEL ── */
+#panel-rel { overflow-y:auto; padding:16px; }
+.rel-group { margin-bottom:20px; }
+.rel-group h3 { font-family:var(--sans); font-size:13px; font-weight:700; margin-bottom:8px; color:var(--text2); }
+.rel-item {
+  background:var(--bg2); border:1px solid var(--border);
+  border-radius:6px; padding:8px 12px; margin-bottom:6px;
+  display:flex; align-items:center; gap:8px; font-size:12px;
+}
+.rel-table { color:var(--accent); font-weight:500; }
+.rel-col { color:var(--text2); }
+.rel-arrow { color:var(--text3); }
+.rel-ref-table { color:var(--fk); font-weight:500; }
+
+/* SCROLLBAR GLOBAL */
+::-webkit-scrollbar { width:5px; height:5px; }
+::-webkit-scrollbar-track { background:var(--bg); }
+::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div id="sidebar">
+  <div id="sidebar-header">
+    <h1>
+      <span>⬡</span> SQL Viewer
+    </h1>
+    <div id="db-info">
+      <span id="conn-status"></span>
+      <span id="db-label">Chưa kết nối</span>
+    </div>
+    <div id="search-box" style="margin-top:10px">
+      <span>⌕</span>
+      <input id="table-search" type="text" placeholder="Tìm bảng..." oninput="filterTables(this.value)"/>
+    </div>
+  </div>
+  <div id="table-list">
+    <div style="padding:20px;text-align:center;color:var(--text3);font-size:12px;">
+      Nhấn ⚙ để kết nối
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <!-- TOPBAR -->
+  <div id="topbar">
+    <button class="tab-btn active" onclick="switchTab('data')">Data</button>
+    <button class="tab-btn" onclick="switchTab('schema')">Schema</button>
+    <button class="tab-btn" onclick="switchTab('query')">Query</button>
+    <button class="tab-btn" onclick="switchTab('rel')">Relationships</button>
+    <div id="topbar-right">
+      <select id="db-select" onchange="switchDatabase(this.value)" style="display:none">
+      </select>
+      <button id="btn-settings" onclick="showModal()" title="Cài đặt kết nối">⚙</button>
+    </div>
+  </div>
+
+  <!-- STATS BAR -->
+  <div id="stats-bar" style="display:none">
+    <div class="stat-item"><span class="stat-num" id="stat-tables">0</span><span class="stat-label">Bảng</span></div>
+    <div class="stat-item"><span class="stat-num" id="stat-views">0</span><span class="stat-label">View</span></div>
+    <div class="stat-item"><span class="stat-num" id="stat-fks">0</span><span class="stat-label">FK</span></div>
+    <div class="stat-item"><span class="stat-num" id="stat-rows">0</span><span class="stat-label">Tổng rows</span></div>
+  </div>
+
+  <!-- CONTENT -->
+  <div id="content">
+    <!-- DATA PANEL -->
+    <div class="panel active" id="panel-data" style="flex-direction:row">
+      <div id="empty-state">
+        <div class="big">◫</div>
+        <p>Chọn một bảng để xem dữ liệu</p>
+      </div>
+    </div>
+
+    <!-- SCHEMA PANEL -->
+    <div class="panel" id="panel-schema">
+      <div style="color:var(--text3);padding:20px;font-size:12px;">Chọn bảng để xem schema</div>
+    </div>
+
+    <!-- QUERY PANEL -->
+    <div class="panel" id="panel-query">
+      <div id="query-editor-wrap">
+        <div id="query-editor-header">
+          <span>SQL Editor</span>
+          <button id="btn-run" onclick="runQuery()">▶ Chạy <small>(F5)</small></button>
+        </div>
+        <textarea id="sql-input" spellcheck="false"
+          placeholder="-- Nhập câu lệnh SQL ở đây&#10;SELECT TOP 100 * FROM dbo.TableName">SELECT TOP 100 * FROM INFORMATION_SCHEMA.TABLES</textarea>
+      </div>
+      <div id="query-status" style="display:none"></div>
+      <div id="query-result" style="flex:1; overflow:auto;"></div>
+    </div>
+
+    <!-- RELATIONSHIPS PANEL -->
+    <div class="panel" id="panel-rel">
+      <div style="color:var(--text3);padding:20px;font-size:12px;">Đang tải...</div>
+    </div>
+  </div>
+</div>
+
+<!-- CONNECT MODAL -->
+<div id="modal-overlay">
+  <div id="modal">
+    <h2>⬡ Kết nối SQL Server</h2>
+    <div class="form-row-2 form-row" style="display:grid;grid-template-columns:1fr 90px;gap:10px">
+      <div>
+        <label>SERVER</label>
+        <input id="inp-server" value="192.168.10.8" placeholder="192.168.10.8"/>
+      </div>
+      <div>
+        <label>PORT</label>
+        <input id="inp-port" value="14333" placeholder="1433"/>
+      </div>
+    </div>
+    <div class="form-row">
+      <label>DATABASE</label>
+      <input id="inp-db" value="VTSYS" placeholder="master"/>
+    </div>
+    <div class="form-row">
+      <label>USER</label>
+      <input id="inp-user" value="sa"/>
+    </div>
+    <div class="form-row">
+      <label>PASSWORD</label>
+      <input id="inp-pass" type="password" value="sql2008@"/>
+    </div>
+    <div id="modal-msg"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="hideModal()">Hủy</button>
+      <button class="btn-primary" onclick="connect()">Kết nối</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:3000/api';
+let allTables = [];
+let currentTable = null;
+let currentPage = 1;
+let currentLimit = 50;
+let currentTab = 'data';
+
+// ── MODAL ──────────────────────────────────────────────────────────────────
+function showModal() {
+  document.getElementById('modal-overlay').classList.add('show');
+  document.getElementById('modal-msg').className = '';
+  document.getElementById('modal-msg').textContent = '';
+}
+function hideModal() {
+  document.getElementById('modal-overlay').classList.remove('show');
+}
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if(e.target === e.currentTarget) hideModal();
+});
+
+// ── CONNECT ────────────────────────────────────────────────────────────────
+async function connect() {
+  const server = document.getElementById('inp-server').value.trim();
+  const port = document.getElementById('inp-port').value.trim();
+  const database = document.getElementById('inp-db').value.trim();
+  const user = document.getElementById('inp-user').value.trim();
+  const password = document.getElementById('inp-pass').value;
+  const msg = document.getElementById('modal-msg');
+  msg.textContent = 'Đang kết nối...';
+  msg.className = '';
+
+  try {
+    const res = await fetch(`${API}/connect`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({server, port, database, user, password})
+    });
+    const data = await res.json();
+    if(data.ok) {
+      msg.textContent = data.message;
+      msg.className = 'ok';
+      setTimeout(() => { hideModal(); onConnected(); }, 800);
+    } else {
+      msg.textContent = data.message;
+      msg.className = 'err';
+    }
+  } catch(e) {
+    msg.textContent = 'Không thể kết nối tới server. Hãy chắc chắn backend đang chạy.';
+    msg.className = 'err';
+  }
+}
+
+// ── ON CONNECTED ────────────────────────────────────────────────────────────
+async function onConnected() {
+  const statusEl = document.getElementById('conn-status');
+  statusEl.classList.add('online');
+
+  await loadDatabases();
+  await loadTables();
+  await loadStats();
+
+  // Show DB select
+  document.getElementById('db-select').style.display = 'block';
+
+  if(currentTab === 'rel') loadRelationships();
+}
+
+// ── LOAD DATABASES ──────────────────────────────────────────────────────────
+async function loadDatabases() {
+  try {
+    const res = await fetch(`${API}/databases`);
+    const dbs = await res.json();
+    const sel = document.getElementById('db-select');
+    sel.innerHTML = '';
+    dbs.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.name; opt.textContent = d.name;
+      sel.appendChild(opt);
+    });
+    // Set current DB
+    const curDb = document.getElementById('inp-db').value;
+    sel.value = curDb;
+  } catch(e) {}
+}
+
+async function switchDatabase(dbName) {
+  try {
+    await fetch(`${API}/use-database`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({database: dbName})
+    });
+    document.getElementById('inp-db').value = dbName;
+    currentTable = null;
+    await loadTables();
+    await loadStats();
+    showEmptyState();
+  } catch(e) {}
+}
+
+// ── LOAD TABLES ─────────────────────────────────────────────────────────────
+async function loadTables() {
+  const tl = document.getElementById('table-list');
+  tl.innerHTML = '<div class="loading"><div class="spinner"></div> Đang tải...</div>';
+  try {
+    const res = await fetch(`${API}/tables`);
+    allTables = await res.json();
+    renderTableList(allTables);
+
+    const dbLabel = document.getElementById('db-label');
+    dbLabel.textContent = document.getElementById('inp-db').value + ' (' + allTables.length + ')';
+  } catch(e) {
+    tl.innerHTML = '<div style="padding:16px;color:var(--red);font-size:11px;">Lỗi tải danh sách bảng</div>';
+  }
+}
+
+function renderTableList(tables) {
+  const tl = document.getElementById('table-list');
+  if(!tables.length) {
+    tl.innerHTML = '<div style="padding:16px;color:var(--text3);font-size:11px;text-align:center;">Không có bảng nào</div>';
+    return;
+  }
+  const groups = {};
+  tables.forEach(t => {
+    if(!groups[t.schema]) groups[t.schema] = [];
+    groups[t.schema].push(t);
+  });
+  let html = '';
+  Object.entries(groups).forEach(([schema, tbls]) => {
+    html += `<div class="schema-group">`;
+    if(Object.keys(groups).length > 1)
+      html += `<div class="schema-label">${schema}</div>`;
+    tbls.forEach(t => {
+      const isView = t.type === 'VIEW';
+      const activeClass = currentTable && currentTable.name===t.name && currentTable.schema===t.schema ? 'active':'';
+      const rows = t.rowCount ? formatNum(t.rowCount) : '–';
+      html += `<div class="table-item ${activeClass}" onclick="selectTable('${t.schema}','${t.name}')">
+        <span class="ti-icon">${isView ? '◈' : '▣'}</span>
+        <span class="tname">${t.name}</span>
+        ${!isView ? `<span class="trows">${rows}</span>` : `<span class="ttype">view</span>`}
+      </div>`;
+    });
+    html += `</div>`;
+  });
+  tl.innerHTML = html;
+}
+
+function filterTables(q) {
+  if(!q) { renderTableList(allTables); return; }
+  const lower = q.toLowerCase();
+  renderTableList(allTables.filter(t => t.name.toLowerCase().includes(lower)));
+}
+
+// ── STATS ───────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const res = await fetch(`${API}/stats`);
+    const s = await res.json();
+    document.getElementById('stat-tables').textContent = s.tableCount || 0;
+    document.getElementById('stat-views').textContent = s.viewCount || 0;
+    document.getElementById('stat-fks').textContent = s.fkCount || 0;
+    document.getElementById('stat-rows').textContent = formatNum(s.totalRows || 0);
+    document.getElementById('stats-bar').style.display = 'flex';
+  } catch(e) {}
+}
+
+// ── SELECT TABLE ─────────────────────────────────────────────────────────────
+async function selectTable(schema, name) {
+  currentTable = {schema, name};
+  currentPage = 1;
+
+  // Update sidebar active
+  document.querySelectorAll('.table-item').forEach(el => {
+    el.classList.toggle('active', el.textContent.includes(name));
+  });
+
+  if(currentTab === 'data') await loadData();
+  else if(currentTab === 'schema') await loadSchemaPanel();
+}
+
+// ── LOAD DATA ─────────────────────────────────────────────────────────────────
+async function loadData() {
+  if(!currentTable) return;
+  const panel = document.getElementById('panel-data');
+  panel.innerHTML = '<div class="loading"><div class="spinner"></div> Đang tải dữ liệu...</div>';
+
+  try {
+    const [colRes, dataRes] = await Promise.all([
+      fetch(`${API}/columns/${currentTable.schema}/${currentTable.name}`),
+      fetch(`${API}/data/${currentTable.schema}/${currentTable.name}?page=${currentPage}&limit=${currentLimit}`)
+    ]);
+    const cols = await colRes.json();
+    const result = await dataRes.json();
+
+    // Build layout
+    panel.innerHTML = `
+      <div id="table-header">
+        <div>
+          <div id="table-title">${currentTable.name}</div>
+          <div id="table-subtitle">${currentTable.schema} · ${formatNum(result.total)} rows</div>
+        </div>
+        <div id="table-controls">
+          <select id="limit-select" onchange="changeLimit(this.value)">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+          <button class="ctrl-btn" onclick="exportCSV()">⤓ CSV</button>
+        </div>
+      </div>
+      <div style="display:flex;flex:1;overflow:hidden">
+        <div id="col-panel">
+          <h3>Cột (${cols.length})</h3>
+          ${cols.map(c => `
+            <div class="col-row">
+              ${c.isPK ? `<span class="col-badge badge-pk">PK</span>` : ''}
+              ${c.isFK ? `<span class="col-badge badge-fk">FK</span>` : ''}
+              <span class="col-name">${c.name}</span>
+              <span class="col-type">${c.type}${c.maxLen && c.maxLen > 0 ? '('+c.maxLen+')' : ''}</span>
+              ${c.nullable === 'YES' ? `<span class="col-badge badge-null">?</span>` : ''}
+            </div>
+          `).join('')}
+        </div>
+        <div id="data-area">
+          ${buildTable(cols, result.data)}
+        </div>
+      </div>
+      <div id="pagination">
+        <button class="pg-btn" onclick="goPage(1)" ${currentPage===1?'disabled':''}>«</button>
+        <button class="pg-btn" onclick="goPage(${currentPage-1})" ${currentPage===1?'disabled':''}>‹</button>
+        <span id="pg-info">Trang ${currentPage} / ${result.totalPages}</span>
+        <button class="pg-btn" onclick="goPage(${currentPage+1})" ${currentPage>=result.totalPages?'disabled':''}>›</button>
+        <button class="pg-btn" onclick="goPage(${result.totalPages})" ${currentPage>=result.totalPages?'disabled':''}>»</button>
+        <span id="row-count">Hiển thị ${result.data.length} / ${formatNum(result.total)} rows</span>
+      </div>
+    `;
+    document.getElementById('limit-select').value = currentLimit;
+  } catch(e) {
+    panel.innerHTML = `<div style="padding:20px;color:var(--red);">Lỗi: ${e.message}</div>`;
+  }
+}
+
+function buildTable(cols, rows) {
+  if(!rows.length) return '<div style="padding:20px;color:var(--text3);">Không có dữ liệu</div>';
+  let h = '<table class="data-table"><thead><tr>';
+  cols.forEach(c => {
+    h += `<th class="${c.isPK?'pk':''}">${c.isPK?'🔑 ':''}${c.name}</th>`;
+  });
+  h += '</tr></thead><tbody>';
+  rows.forEach(row => {
+    h += '<tr>';
+    cols.forEach(c => {
+      const val = row[c.name];
+      if(val === null || val === undefined) {
+        h += `<td><span class="null-val">NULL</span></td>`;
+      } else if(typeof val === 'number') {
+        h += `<td class="num-val">${val}</td>`;
+      } else if(val instanceof Date || (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val))) {
+        h += `<td class="date-val">${val}</td>`;
+      } else {
+        const s = String(val);
+        const display = s.length > 80 ? s.slice(0,80)+'…' : s;
+        h += `<td class="str-val" title="${s.replace(/"/g,'&quot;')}">${escHtml(display)}</td>`;
+      }
+    });
+    h += '</tr>';
+  });
+  h += '</tbody></table>';
+  return h;
+}
+
+function goPage(p) { currentPage = p; loadData(); }
+function changeLimit(v) { currentLimit = parseInt(v); currentPage = 1; loadData(); }
+
+// ── SCHEMA PANEL ──────────────────────────────────────────────────────────────
+async function loadSchemaPanel() {
+  if(!currentTable) {
+    document.getElementById('panel-schema').innerHTML = '<div style="padding:20px;color:var(--text3);font-size:12px;">Chọn bảng để xem schema</div>';
+    return;
+  }
+  const panel = document.getElementById('panel-schema');
+  panel.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    const res = await fetch(`${API}/columns/${currentTable.schema}/${currentTable.name}`);
+    const cols = await res.json();
+    const pks = cols.filter(c=>c.isPK).map(c=>c.name);
+    const fks = cols.filter(c=>c.isFK);
+
+    panel.innerHTML = `
+      <div class="schema-card open" style="max-width:700px;margin:0 auto;width:100%">
+        <div class="schema-card-header" onclick="this.parentElement.classList.toggle('open')">
+          <span style="color:var(--accent)">▣</span>
+          <div class="schema-card-title">${currentTable.schema}.${currentTable.name}</div>
+          <span class="schema-card-meta">${cols.length} cột</span>
+        </div>
+        <div class="schema-card-body">
+          ${cols.map(c => `
+            <div class="schema-col-row">
+              <span class="sname">${c.name}</span>
+              <span class="stype">${c.type}${c.maxLen&&c.maxLen>0?'('+c.maxLen+')':''}</span>
+              <span style="display:flex;gap:5px">
+                ${c.isPK ? `<span class="col-badge badge-pk">PK</span>` : ''}
+                ${c.isFK ? `<span class="col-badge badge-fk" title="→ ${c.fkTable}.${c.fkColumn}">FK</span>` : ''}
+                ${c.nullable==='YES' ? `<span class="col-badge badge-null">NULL</span>` : `<span class="col-badge" style="background:#fff005 ;color:#111;border:1px solid #fff00540">NOT NULL</span>`}
+              </span>
+              ${c.isFK ? `<span class="schema-fk-info">→ ${c.fkTable}.${c.fkColumn}</span>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      ${pks.length ? `<div style="margin:0 auto;max-width:700px;font-size:11px;color:var(--text3);padding:6px 0">🔑 Primary Key: ${pks.join(', ')}</div>` : ''}
+      ${fks.length ? `<div style="margin:0 auto;max-width:700px;font-size:11px;color:var(--fk);padding:4px 0">Foreign Keys: ${fks.map(f=>f.name+' → '+f.fkTable+'.'+f.fkColumn).join(' · ')}</div>` : ''}
+    `;
+  } catch(e) {
+    panel.innerHTML = `<div style="padding:20px;color:var(--red)">Lỗi: ${e.message}</div>`;
+  }
+}
+
+// ── QUERY PANEL ───────────────────────────────────────────────────────────────
+async function runQuery() {
+  const sqlText = document.getElementById('sql-input').value.trim();
+  if(!sqlText) return;
+  const statusEl = document.getElementById('query-status');
+  const resultEl = document.getElementById('query-result');
+  statusEl.style.display = 'flex';
+  statusEl.innerHTML = '<div class="spinner"></div> Đang chạy...';
+  statusEl.className = '';
+  resultEl.innerHTML = '';
+
+  try {
+    const res = await fetch(`${API}/query`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({sql: sqlText})
+    });
+    const data = await res.json();
+    if(data.error) {
+      statusEl.innerHTML = `<span class="status-err">✗ ${escHtml(data.error)}</span>`;
+    } else {
+      statusEl.innerHTML = `<span class="status-ok">✓ ${data.recordset.length} rows</span> <span style="color:var(--text3)">· ${data.elapsed}ms</span>`;
+      if(data.recordset.length) {
+        const cols = Object.keys(data.recordset[0]).map(k => ({name:k, isPK:false, isFK:false}));
+        resultEl.innerHTML = buildTable(cols, data.recordset);
+      } else {
+        resultEl.innerHTML = '<div style="padding:16px;color:var(--text3);font-size:12px;">Không có kết quả · Rows affected: '+data.rowsAffected+'</div>';
+      }
+    }
+  } catch(e) {
+    statusEl.innerHTML = `<span class="status-err">✗ ${e.message}</span>`;
+  }
+}
+
+// ── RELATIONSHIPS ──────────────────────────────────────────────────────────────
+async function loadRelationships() {
+  const panel = document.getElementById('panel-rel');
+  panel.innerHTML = '<div class="loading"><div class="spinner"></div> Đang tải...</div>';
+  try {
+    const res = await fetch(`${API}/relationships`);
+    const rels = await res.json();
+    if(!rels.length) {
+      panel.innerHTML = '<div style="padding:20px;color:var(--text3);">Không tìm thấy foreign key nào</div>';
+      return;
+    }
+    const grouped = {};
+    rels.forEach(r => {
+      if(!grouped[r.parent_table]) grouped[r.parent_table] = [];
+      grouped[r.parent_table].push(r);
+    });
+    panel.innerHTML = Object.entries(grouped).map(([tbl, rs]) => `
+      <div class="rel-group">
+        <h3>▣ ${tbl}</h3>
+        ${rs.map(r => `
+          <div class="rel-item">
+            <span class="rel-table">${r.parent_table}</span>
+            <span class="rel-col">.${r.parent_column}</span>
+            <span class="rel-arrow">──FK──▶</span>
+            <span class="rel-ref-table">${r.ref_table}</span>
+            <span class="rel-col">.${r.ref_column}</span>
+          </div>
+        `).join('')}
+      </div>
+    `).join('');
+  } catch(e) {
+    panel.innerHTML = `<div style="padding:20px;color:var(--red)">Lỗi: ${e.message}</div>`;
+  }
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    b.classList.toggle('active', ['data','schema','query','rel'][i] === tab);
+  });
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-'+tab).classList.add('active');
+
+  if(tab === 'data' && currentTable) loadData();
+  else if(tab === 'schema') loadSchemaPanel();
+  else if(tab === 'rel') loadRelationships();
+}
+
+function showEmptyState() {
+  document.getElementById('panel-data').innerHTML = `
+    <div id="empty-state">
+      <div class="big">◫</div>
+      <p>Chọn một bảng để xem dữ liệu</p>
+    </div>`;
+}
+
+// ── EXPORT CSV ────────────────────────────────────────────────────────────────
+async function exportCSV() {
+  if(!currentTable) return;
+  try {
+    const res = await fetch(`${API}/data/${currentTable.schema}/${currentTable.name}?page=1&limit=10000`);
+    const {data} = await res.json();
+    if(!data.length) return;
+    const cols = Object.keys(data[0]);
+    let csv = cols.join(',') + '\n';
+    data.forEach(row => {
+      csv += cols.map(c => {
+        const v = row[c];
+        if(v===null||v===undefined) return '';
+        const s = String(v);
+        return s.includes(',') || s.includes('"') || s.includes('\n') ? '"'+s.replace(/"/g,'""')+'"' : s;
+      }).join(',') + '\n';
+    });
+    const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${currentTable.name}.csv`;
+    a.click();
+  } catch(e) { alert('Lỗi xuất CSV: '+e.message); }
+}
+
+// ── UTILS ──────────────────────────────────────────────────────────────────────
+function formatNum(n) {
+  if(!n) return '0';
+  return Number(n).toLocaleString('vi-VN');
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── KEYBOARD SHORTCUTS ─────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if(e.key === 'F5' && currentTab === 'query') { e.preventDefault(); runQuery(); }
+  if(e.key === 'Enter' && e.target.id === 'inp-pass') connect();
+});
+
+// ── AUTO CONNECT ON LOAD ────────────────────────────────────────────────────────
+window.onload = () => {
+  // Auto try to connect with default config
+  setTimeout(async () => {
+    try {
+      const res = await fetch(`${API}/tables`);
+      if(res.ok) {
+        onConnected();
+      } else {
+        showModal();
+      }
+    } catch(e) {
+      // Backend not available
+    }
+  }, 500);
+};
+</script>
+</body>
+</html>
