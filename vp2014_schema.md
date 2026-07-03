@@ -323,6 +323,18 @@
 | Tien4 | numeric | — | YES |  |  |
 | Gia_Tb_TT | char | 1 | YES |  |  |
 
+**📝 Ghi chú chi tiết về các cột Số lượng, Giá và Thành tiền (CtBH0):**
+- **So_Luong**: Số lượng bán thực tế theo đơn vị tính chính (`Dvt`).
+- **He_So8, He_So9**: Hệ số quy đổi đơn vị tính (ví dụ: quy đổi từ thùng sang cái).
+- **So_Luong8, So_Luong9**: Số lượng đã nhân với hệ số (`So_Luong` * `He_So`).
+- **Gia9**: Đơn giá niêm yết (Đơn giá gốc chưa trừ chiết khấu).
+- **Gia2**: Đơn giá bán thực tế (Đơn giá sau khi đã trừ chiết khấu).
+- **Tien9**: Doanh thu gộp (Thành tiền chưa trừ chiết khấu, = `So_Luong` * `Gia9`).
+- **Tien4**: Tiền chiết khấu cho khách hàng (= `Tien9` - `Tien2`).
+- **Tien2**: Doanh thu thuần (Thành tiền thực tế khách phải trả, = `So_Luong` * `Gia2`).
+- **Chiet_Khau**: Tỷ lệ phần trăm chiết khấu (Ví dụ: 58 = 58%).
+- **_Nt (Tien_Nt2, Gia_Nt9...)**: Lưu số tiền ngoại tệ. Nếu giao dịch bằng VNĐ, giá trị bằng đúng cột nội tệ tương ứng (VD: `Tien_Nt2` = `Tien2`).
+
 ---
 
 #### Bảng: `dbo.CtCK`
